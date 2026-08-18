@@ -216,3 +216,30 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+# ============================================================
+# Project-specific additions — Fab Yield & Defect Analytics
+# ============================================================
+
+# ----- Local DB credentials / connection config -----
+# Never commit your SQL Server connection string or password.
+# (Note: .env is already ignored above by the Python template.)
+db_config.py
+config.local.*
+
+# ----- Generated data -----
+# The synthetic CSVs are recreated by running the Python script,
+# so they don't need to live in Git. Comment out to include a
+# sample dataset in the repo instead.
+data/*.csv
+!data/.gitkeep
+
+# ----- OS clutter (Windows) -----
+Thumbs.db
+desktop.ini
+
+# ----- SQL Server / SSMS local files -----
+*.bak                 # database backup files (can be large)
+*.mdf                 # SQL Server data files
+*.ldf                 # SQL Server log files
