@@ -402,13 +402,13 @@ signal to work with.
 ```
 .
 ├── sql/
-│   ├── 00_verify_schema.sql              # whole-schema health check (12 tables, 13 FKs)
 │   ├── 01_schema/                        # Stage 1: CREATE TABLE scripts, in dependency order
 │   │   ├── 01_1_lookup_tables.sql        #   reference catalogs (no FKs)
 │   │   ├── 01_2_lots_wafers.sql          #   production hierarchy (first FK)
 │   │   ├── 01_3_chambers.sql             #   chambers under tools
 │   │   ├── 01_4_event_tables.sql         #   process_runs, defect_inspections, bin_results
-│   │   └── 01_5_detail_tables.sql        #   metrology_measurements, defects
+│   │   ├── 01_5_detail_tables.sql        #   metrology_measurements, defects
+|   |   └── 01_verify_schema.sql              # whole-schema health check (12 tables, 13 FKs)
 │   ├── 02_seed_data/                     # Stage 2: seed data, in dependency order
 │   │   ├── 02_1_lookups.sql              #   hand-written reference data
 │   │   ├── 02_2_chambers.sql             #   look-up-parent-ID pattern
