@@ -4,7 +4,7 @@
 metrology, and final-test data — built so that analytical queries can trace a
 yield loss back to the specific tool or chamber that caused it.**
 
-> **Project status: Stages 1–3 complete; Stage 4 (GitHub packaging) remaining.**
+> **Project status: complete — all three stages done.**
 > The 12-table schema is built and fully constrained (Stage 1); the database is
 > populated with a large, internally-consistent synthetic dataset carrying a
 > deliberately planted, subtle equipment excursion (Stage 2); and a five-part
@@ -473,8 +473,7 @@ system catalog views.
       analysis, defect Pareto with defect-mix contrast, SPC control charts,
       commonality analysis that re-identifies `ETCH-02/C` from the data alone, and
       defect-to-yield correlation closing the loop
-- [ ] **Stage 4** — GitHub packaging: schema/ER diagram, query-result screenshots,
-      and cross-links to the WM-811K ML project
+
 
 ---
 
