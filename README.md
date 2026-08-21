@@ -81,6 +81,12 @@ Twelve tables in five dependency layers — reference catalogs, production
 hierarchy, equipment detail, event/fact tables, and leaf detail — wired together
 by 13 foreign keys that enforce full referential integrity.
 
+![Entity-relationship diagram of the 12-table schema](images/schema_diagram.png)
+
+*The full schema: 12 tables across five dependency layers, joined by 13 foreign
+keys. `process_runs` sits at the center as the fact table every analysis joins
+through — the structure that makes chamber-level commonality analysis possible.*
+
 | Layer | Tables | Role |
 |---|---|---|
 | **Reference / lookup** | `tools`, `process_steps`, `defect_types`, `bin_codes` | Controlled vocabulary: the equipment, the process flow, defect classification, and test bins |
