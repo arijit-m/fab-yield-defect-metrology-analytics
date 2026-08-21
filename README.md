@@ -244,6 +244,7 @@ Defect types are ranked biggest-first with a running cumulative % (a windowed
   analysis is even run.
   
   ![Defect-mix contrast: bad chamber vs others](images/defect_mix.png)
+  
 *The bad chamber doesn't just make more defects — it makes different ones.
 Particle and Flake dominate `ETCH-02/C`'s defect mix (≈72% combined) versus
 ≈24% elsewhere, the physical signature of a contaminated etch chamber.*
@@ -276,6 +277,7 @@ through, grouped by chamber, and ranked worst-first. **The query is not told abo
 `ETCH-02/C`; it rediscovers it.**
 
    ![Commonality analysis result](images/commonality_result.png)
+   
    *ETCH-02/C surfaces at rank 1 — the worst-yielding chamber — with its
    sibling chambers A and B sitting at baseline. The query is never told where
    to look.*
@@ -307,6 +309,7 @@ One root cause, every arrow pointing the same way — more defects, of the
 contamination type, depressing yield.
 
 ![Fingerprint summary: one root cause, three consequences](images/fingerprint_summary.png)
+
 *The whole investigation in one grid: `ETCH-02/C` wafers carry more defects,
 lower yield, and a far higher particle/flake share than all other wafers —
 one root cause, every metric pointing the same way.*
