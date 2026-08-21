@@ -4,13 +4,15 @@
 metrology, and final-test data — built so that analytical queries can trace a
 yield loss back to the specific tool or chamber that caused it.**
 
-> **Project status: Stages 1–2 complete; Stage 3 (analysis queries) in progress.**
-> The 12-table schema is built and fully constrained (Stage 1), and the database
-> is populated with a large, internally-consistent synthetic dataset carrying a
-> deliberately planted, subtle equipment excursion (Stage 2). The analysis layer
-> that *rediscovers* that excursion from the data — yield analysis, defect
-> Pareto, SPC control charts, and commonality analysis — is the next stage. See
-> the [Roadmap](#roadmap) for the stage-by-stage map.
+> **Project status: Stages 1–3 complete; Stage 4 (GitHub packaging) remaining.**
+> The 12-table schema is built and fully constrained (Stage 1); the database is
+> populated with a large, internally-consistent synthetic dataset carrying a
+> deliberately planted, subtle equipment excursion (Stage 2); and a five-part
+> analysis layer *rediscovers that excursion from the data* — ruling out product
+> and node, flagging the suspect tool, reading the contamination signature in the
+> defect mix, quantifying a sub-sigma SPC shift, and finally isolating the exact
+> chamber by commonality analysis, all without the answer ever appearing in a
+> query (Stage 3). See the [Roadmap](#roadmap) for the stage-by-stage map.
 
 ---
 
@@ -54,16 +56,22 @@ slightly worse than its peers, and the effect is planted *through the same join
 paths a real excursion would follow*, never hard-coded onto a list of wafer IDs.
 Because the answer is known in advance, the Stage 3 analysis can be **validated**:
 a commonality query is only trustworthy if it re-finds the planted culprit
-without being told where it is. Real fab data never comes with an answer key;
-synthetic data engineered this way does, which makes it the better substrate for
-*demonstrating* that the analysis works.
+without being told where it is — which it does (see
+[Analysis and results](#analysis-and-results-stage-3)). Real fab data never comes
+with an answer key; synthetic data engineered this way does, which makes it the
+better substrate for *demonstrating* that the analysis works.
 
 The generation is also built to be **realistic where it counts**: the reference
 catalog uses real tool vendors and a coherent process flow, the signal is subtle
 enough to require aggregation to detect (not visible wafer-by-wafer), and the
-same 187 affected wafers show a *consistent* fingerprint across three independent
-measurements — more defects, lower yield, and a metrology drift — the way one
-physical root cause actually manifests.
+same ~187 affected wafers show a *consistent* fingerprint across three
+independent measurements — more defects, lower yield, and a metrology drift — the
+way one physical root cause actually manifests.
+
+*A note on exact figures: because per-row variation is randomized, the precise
+numbers shift slightly on each reseed. All values quoted below are from one
+representative run; the **shape** of every result (which group is worse, by
+roughly how much) is stable across seeds.*
 
 ---
 
@@ -173,18 +181,131 @@ Two design properties make this a genuine analysis problem rather than a rigged
 reveal:
 
 - **It is subtle, not obvious.** In every case the affected and unaffected groups
-  *overlap*: a noisy good-chamber wafer can out-fail a lucky bad-chamber one. The
-  effect exists only in the group **mean**, across all 187 wafers — invisible
-  wafer-by-wafer, detectable only by aggregation. That is exactly what a real
-  yield excursion looks like, and what makes Stage 3's job non-trivial.
+  *overlap*: a noisy good-chamber wafer can out-yield a lucky bad-chamber one.
+  The effect exists only in the group **mean**, across all ~187 wafers —
+  invisible wafer-by-wafer, detectable only by aggregation. That is exactly what
+  a real yield excursion looks like, and what makes Stage 3's job non-trivial.
 
 - **It is isolated and physically coherent.** The metrology drift appears in
   **CD only** — overlay and film thickness stay centered across both groups —
   which points at the etch chamber specifically rather than a systemic problem.
   And the defect types the bad chamber over-produces (particles, flakes) are the
-  physically correct signature of a contaminated etch chamber. Bad chamber →
-  right defect types → depressed yield → single-parameter metrology drift: one
-  root cause, four consistent consequences.
+  physically correct signature of a contaminated etch chamber. One root cause
+  produces a coherent set of consequences — more defects, of the right type,
+  depressing yield, with an isolated CD drift — rather than four unrelated
+  anomalies.
+
+---
+
+## Analysis and results (Stage 3)
+
+The analysis layer is the payoff, and it is built as a **progression**: each
+query narrows the field, and only the last one names the culprit — the way a real
+root-cause investigation actually unfolds. Two reusable views defined first
+(`v_wafer_yield`, `v_wafer_defects`) give a single, DRY definition of "yield" and
+"defect load" that every query below builds on.
+
+**Throughout, the planted answer (`ETCH-02/C`) is never named in a filter until
+the confirmation step — the analysis has to *find* it.**
+
+### 1. Yield analysis — rule out product and node, flag the suspect tool
+
+Die yield is sliced by lot, product, technology node, and tool (die-weighted:
+`SUM(pass_dies) / SUM(total_dies)` per group, not an average of per-wafer
+percentages).
+
+- **Product and node are flat.** SoC-A17 89.48 %, GPU-B20 89.48 %, MEM-C10
+  89.38 %; nodes 3nm/5nm/7nm land at 89.48 / 89.48 / 89.38. A ~0.1-point spread
+  is noise. This is a **useful negative result**: the loss is *not*
+  product-specific and *not* node-specific — ruled out before any equipment is
+  examined.
+- **One tool trails its peers.** By tool, `ETCH-02` sits at **88.09 %**, alone at
+  the bottom, ~1.4 points below the other etchers and every non-etch tool
+  (~88.6–89.5 %). This correctly points at ETCH-02 — but it *cannot yet name the
+  chamber*, because ETCH-02's average blends its three chambers (A and B healthy,
+  C bad), diluting the signal. That dilution is the tell that the problem is
+  sub-tool.
+
+### 2. Defect Pareto — read the failure mode from the defect mix
+
+Defect types are ranked biggest-first with a running cumulative % (a windowed
+`SUM() OVER (ORDER BY … ROWS UNBOUNDED PRECEDING)`).
+
+- **Overall Pareto:** Particle leads at 24.6 % of all defects; the top three
+  types (Particle, Bridge, Open) account for **54.5 %**, the top five for 77 %.
+  The cumulative column closes at exactly 100.00 % — a built-in correctness
+  check on the running total.
+- **The mix is where the signal shows.** Split by group, the bad chamber does not
+  just make *more* defects — it makes *different* ones. **Particle + Flake are
+  ≈72 % of `ETCH-02/C`'s defects vs ≈24 % for every other wafer** (Particle 45.9
+  vs 19.9 %; Flake 26.2 vs 4.1 %). Particles and flakes are the physical
+  signature of a *contaminated etch chamber* (wall buildup, flaking), so the
+  defect mix names the failure *mechanism* — contamination — before commonality
+  analysis is even run.
+
+### 3. SPC control charts — a sustained shift a point-check cannot catch
+
+Control limits are set at mean ± 3σ for CD, overlay, and film thickness, computed
+both overall and per-tool.
+
+- **Zero individual points breach ±3σ** on any metric — and that is the correct,
+  honest result. The planted CD drift (~1 nm) is *smaller* than the natural CD
+  spread (σ ≈ 1.30 nm), so no single reading looks alarming. A subtle sustained
+  shift is invisible to a point-outside-limits rule.
+- **The group mean is the detector.** `ETCH-02/C`'s mean CD (45.98 nm) sits
+  **0.65σ above** the overall center line (45.13 nm), while all other wafers sit
+  at 45.01 nm. A two-thirds-sigma shift *sustained across a whole group* is a
+  strong SPC signal even though no point is individually out of control — the
+  concrete reason fabs pair ±3σ limits with run rules ("N consecutive points on
+  one side of center").
+- **Drift follows the wafers, not the instrument.** Grouping CD by the
+  *measuring* tool surfaces only the metrology tools (CD-SEM, overlay tool), not
+  ETCH-02 — because the drift is carried by the wafers' process history, not the
+  tool that measured them. This is precisely *why* the next step joins back
+  through `process_runs` to the **processing** chamber.
+
+### 4. Commonality analysis — name the chamber (the headline)
+
+Each wafer's yield is joined through `process_runs` to every chamber it passed
+through, grouped by chamber, and ranked worst-first. **The query is not told about
+`ETCH-02/C`; it rediscovers it.**
+
+- **`ETCH-02/C` ranks #1 (worst), alone.** Its wafers average **84.08 %** yield.
+  The next-worst chamber is already up at 88.56 % — a 4.5-point gap from #1 to
+  #2 — and every other chamber, *including ETCH-02's own siblings A (90.05 %) and
+  B (90.12 %)*, sits in the healthy ~90 % band. The isolation is the proof: it is
+  **not the tool, it is chamber C specifically.**
+- **Statistical confirmation:** `ETCH-02/C` at 84.08 % (187 wafers) vs all other
+  etch chambers at 90.21 % (1,313 wafers) — a ~6.1-point separation in the means.
+  The ranges overlap (bad reaches 90.97 %, others dip to 82.64 %), confirming the
+  signal is honestly subtle per-wafer, yet the group means are decisively apart.
+
+### 5. Defect-to-yield correlation — close the loop
+
+Bucketing wafers by defect load shows yield **falling monotonically** as defects
+rise: 0–3 defects → 90.04 %, 4–6 → 89.60 %, 7–9 → 84.22 %. Defects don't merely
+co-occur with the bad chamber; they *track* yield loss.
+
+The whole investigation then collapses into one summary grid:
+
+| Group | Avg defects | Avg yield | Particle + Flake share |
+|---|---|---|---|
+| **`ETCH-02/C` (bad)** | 6.16 | 84.08 % | 72.0 % |
+| All others | 3.95 | 90.21 % | 24.1 % |
+
+One root cause, every arrow pointing the same way — more defects, of the
+contamination type, depressing yield.
+
+### The through-line
+
+The signal was **invisible per-wafer** (overlapping ranges), **invisible to
+product/node analysis** (flat), only **partially visible by tool** (ETCH-02
+flagged but diluted), readable as a **shifted defect mix** (contamination),
+present as a **0.65σ CD group-mean shift** no ±3σ check catches, and **invisible
+to by-measuring-tool SPC** — yet it was **named unambiguously the moment wafers
+were grouped by the chamber they shared.** That progression is the demonstration:
+simpler analyses narrow the field; commonality analysis — enabled by the
+`process_runs` fact table designed in Stage 1 — delivers the culprit.
 
 ---
 
@@ -203,14 +324,20 @@ evidence of engineering judgment.
   entirely and generate number series with recursive CTEs, which are portable
   across every version. Portability chosen over a newer convenience.
 
+- **A point-check misses a subtle shift — by design.** The SPC stage returns
+  *zero* points outside ±3σ, which is easy to misread as "no signal." It is the
+  opposite: the planted shift is deliberately smaller than one sigma, so the
+  correct detector is a group-mean comparison, not an individual-point rule. The
+  analysis reports both and explains why the point-check is blind here — the same
+  reason real fabs run Western-Electric-style run rules alongside limit checks.
+
 - **Data-quality cross-checks are built into the schema and verified.** The
   schema stores each inspection's reported `defect_count` *and* the individual
-  defect rows, specifically so the two can be reconciled:
-  `SUM(defect_count)` must equal `COUNT(*)` over the `defects` table. After
-  generation the two match exactly (≈6,300 = ≈6,300), which proves the
-  count-to-rows expansion produced neither orphans nor duplicates. The die grid
-  is checked the same way — every one of the 1,500 wafers has exactly 144 dies,
-  no more, no fewer.
+  defect rows, specifically so the two can be reconciled: `SUM(defect_count)`
+  must equal `COUNT(*)` over the `defects` table. After generation the two match
+  exactly, which proves the count-to-rows expansion produced neither orphans nor
+  duplicates. The die grid is checked the same way — every one of the 1,500
+  wafers has exactly 144 dies, no more, no fewer.
 
 - **Never hard-code a generated ID.** Because primary keys are `IDENTITY`-assigned
   and land in non-obvious order (wafer #2 is not slot 2 of lot 1 — it's slot 1 of
@@ -245,41 +372,23 @@ signal to work with.
 
 ---
 
-## Analysis queries (Stage 3 — in progress)
-
-The analytical layer is the payoff, and is the next stage to be built. Planned:
-
-- **Yield analysis** — die yield by wafer, lot, product, and technology node,
-  computed from `bin_results` against `bin_codes.is_pass`.
-- **Defect Pareto** — which defect types drive the most loss, ranked, keyed off
-  `defect_types.is_killer`.
-- **SPC / control charts** — mean ± 3σ control limits on CD, overlay, and film
-  thickness, flagging out-of-control points and one-sided runs.
-- **Commonality analysis** — the headline: group failing wafers by the
-  tool/chamber they passed through and surface the one whose wafers fail at a
-  statistically higher rate. Success is defined precisely: **the query must
-  re-identify `ETCH-02/C` without being told it is the culprit.**
-- **Defect-to-yield correlation** — tie elevated defect counts to depressed die
-  yield across the same wafer population.
-
-This section will be filled in with the queries and their results as the stage is
-built.
-
----
-
 ## Methodology principles
 
 - **Referential integrity first.** The schema is fully constrained before any
   data is loaded, so no analysis ever runs against a broken link.
+- **Define it once.** "Yield" and "defect load" are defined a single time as
+  views and reused by every analysis query, rather than re-derived per query.
+- **Rule out before you rule in.** The analysis eliminates product and node
+  before examining equipment, and distinguishes a tool-level shadow from the
+  chamber-level root cause — negative results treated as results.
+- **Choose the detector to match the signal.** A subtle sustained shift is
+  surfaced with a group-mean comparison, not an individual-point control check;
+  the analysis states *why* the point-check is blind rather than hiding the zero.
 - **Verify against ground truth, not the editor.** System catalog views
-  (`sys.tables`, `sys.foreign_keys`) are treated as the source of truth for
-  what exists, over any tooling cache. Every stage is confirmed against them.
-- **Explicit database context.** Every script and check is scoped with
-  `USE FabYield;` so it never runs against the wrong database — a discipline that
-  matters more as generation scripts start doing real work.
-- **Set-based, not procedural.** Row generation and count-expansion use joins,
-  CTEs, and a tally table rather than loops or cursors — the idiomatic,
-  performant SQL approach.
+  (`sys.tables`, `sys.foreign_keys`) are the source of truth for what exists,
+  over any tooling cache. Every stage is confirmed against them.
+- **Set-based, not procedural.** Generation, count-expansion, and analysis use
+  joins, CTEs, window functions, and a tally table rather than loops or cursors.
 - **Subtle signal, honestly labeled.** The planted excursion is small enough to
   require real analysis to find, and the synthetic nature of the data is stated
   up front rather than implied away.
@@ -293,24 +402,30 @@ built.
 ```
 .
 ├── sql/
-│   ├── 00_verify_schema.sql            # whole-schema health check (12 tables, 13 FKs)
-│   ├── 01_schema/                      # Stage 1: CREATE TABLE scripts, in dependency order
-│   │   ├── 01_1_lookup_tables.sql      #   reference catalogs (no FKs)
-│   │   ├── 01_2_lots_wafers.sql        #   production hierarchy (first FK)
-│   │   ├── 01_3_chambers.sql           #   chambers under tools
-│   │   ├── 01_4_event_tables.sql       #   process_runs, defect_inspections, bin_results
-│   │   └── 01_5_detail_tables.sql      #   metrology_measurements, defects
-│   ├── 02_seed_data/                   # Stage 2: seed data, in dependency order
-│   │   ├── 02_1_lookups.sql            #   hand-written reference data
-│   │   ├── 02_2_chambers.sql           #   look-up-parent-ID pattern
-│   │   ├── 02_3_lots_wafers.sql        #   generated: 60 lots, 1,500 wafers
-│   │   ├── 02_4_process_runs.sql       #   generated: 15,000 runs (bad chamber planted here)
-│   │   ├── 02_5a_numbers.sql           #   reusable tally table
-│   │   ├── 02_5b_defects.sql           #   generated: inspections + defects (signal)
-│   │   ├── 02_6_bin_results.sql        #   generated: 216,000 dies (yield signal)
-│   │   ├── 02_7_metrology.sql          #   generated: CD/overlay/film-thickness (CD drift)
-│   │   └── 02_verify_seed.sql          #   whole-stage seed verification
-│   └── 03_analysis_queries/            # Stage 3: analysis (in progress)
+│   ├── 00_verify_schema.sql              # whole-schema health check (12 tables, 13 FKs)
+│   ├── 01_schema/                        # Stage 1: CREATE TABLE scripts, in dependency order
+│   │   ├── 01_1_lookup_tables.sql        #   reference catalogs (no FKs)
+│   │   ├── 01_2_lots_wafers.sql          #   production hierarchy (first FK)
+│   │   ├── 01_3_chambers.sql             #   chambers under tools
+│   │   ├── 01_4_event_tables.sql         #   process_runs, defect_inspections, bin_results
+│   │   └── 01_5_detail_tables.sql        #   metrology_measurements, defects
+│   ├── 02_seed_data/                     # Stage 2: seed data, in dependency order
+│   │   ├── 02_1_lookups.sql              #   hand-written reference data
+│   │   ├── 02_2_chambers.sql             #   look-up-parent-ID pattern
+│   │   ├── 02_3_lots_wafers.sql          #   generated: 60 lots, 1,500 wafers
+│   │   ├── 02_4_process_runs.sql         #   generated: 15,000 runs (bad chamber planted here)
+│   │   ├── 02_5a_numbers.sql             #   reusable tally table
+│   │   ├── 02_5b_defects.sql             #   generated: inspections + defects (signal)
+│   │   ├── 02_6_bin_results.sql          #   generated: 216,000 dies (yield signal)
+│   │   ├── 02_7_metrology.sql            #   generated: CD/overlay/film-thickness (CD drift)
+│   │   └── 02_verify_seed.sql            #   whole-stage seed verification
+│   └── 03_analysis_queries/              # Stage 3: analysis layer
+│       ├── 03_1_foundation_views.sql          # v_wafer_yield, v_wafer_defects (reusable)
+│       ├── 03_2_yield_analysis.sql            # yield by lot / product / node / tool
+│       ├── 03_3_defect_pareto.sql             # ranked Pareto + defect-mix contrast
+│       ├── 03_4_spc_control.sql               # ±3σ control limits + group-mean shift
+│       ├── 03_5_commonality.sql               # commonality analysis — rediscovers ETCH-02/C
+│       └── 03_6_defect_yield_correlation.sql  # defect load vs yield, full fingerprint
 └── README.md
 ```
 
@@ -320,7 +435,8 @@ built.
 
 Microsoft SQL Server 2025 (Express) · T-SQL · SQL Server Management Studio (SSMS)
 · set-based generation (recursive CTEs, tally table, `CHECKSUM(NEWID())`
-randomness, round-robin modulo assignment) · schema and data verification against
+randomness, round-robin modulo assignment) · analytical SQL (views, CTEs, window
+functions, `RANK()`, `STDEV()` for SPC) · schema and data verification against
 system catalog views.
 
 ---
@@ -334,10 +450,11 @@ system catalog views.
       set-based generation (60 lots → 1,500 wafers → 15,000 runs → 216,000 dies),
       with a subtle, physically-coherent equipment excursion planted at `ETCH-02/C`
       and verified across defects, yield, and metrology
-- [ ] **Stage 3** — Analysis queries: yield analysis, defect Pareto, SPC control
-      charts, defect-to-yield correlation, and commonality analysis that
-      re-identifies the planted root cause from the data
-- [ ] **Stage 4** — GitHub packaging: schema diagram, query result screenshots,
+- [x] **Stage 3** — Analysis layer: reusable yield/defect views, then yield
+      analysis, defect Pareto with defect-mix contrast, SPC control charts,
+      commonality analysis that re-identifies `ETCH-02/C` from the data alone, and
+      defect-to-yield correlation closing the loop
+- [ ] **Stage 4** — GitHub packaging: schema/ER diagram, query-result screenshots,
       and cross-links to the WM-811K ML project
 
 ---
