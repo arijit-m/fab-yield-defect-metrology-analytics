@@ -408,7 +408,7 @@ signal to work with.
 │   │   ├── 01_3_chambers.sql             #   chambers under tools
 │   │   ├── 01_4_event_tables.sql         #   process_runs, defect_inspections, bin_results
 │   │   ├── 01_5_detail_tables.sql        #   metrology_measurements, defects
-|   |   └── 01_verify_schema.sql              # whole-schema health check (12 tables, 13 FKs)
+|   |   └── 01_verify_schema.sql          # whole-schema health check (12 tables, 13 FKs)
 │   ├── 02_seed_data/                     # Stage 2: seed data, in dependency order
 │   │   ├── 02_1_lookups.sql              #   hand-written reference data
 │   │   ├── 02_2_chambers.sql             #   look-up-parent-ID pattern
@@ -426,6 +426,7 @@ signal to work with.
 │       ├── 03_4_spc_control.sql               # ±3σ control limits + group-mean shift
 │       ├── 03_5_commonality.sql               # commonality analysis — rediscovers ETCH-02/C
 │       └── 03_6_defect_yield_correlation.sql  # defect load vs yield, full fingerprint
+|       └── 03_verify_analysis.sql             # analysis verification
 └── README.md
 ```
 
