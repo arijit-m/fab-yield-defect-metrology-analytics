@@ -242,6 +242,11 @@ Defect types are ranked biggest-first with a running cumulative % (a windowed
   signature of a *contaminated etch chamber* (wall buildup, flaking), so the
   defect mix names the failure *mechanism* — contamination — before commonality
   analysis is even run.
+  
+  ![Defect-mix contrast: bad chamber vs others](images/defect_mix.png)
+*The bad chamber doesn't just make more defects — it makes different ones.
+Particle and Flake dominate `ETCH-02/C`'s defect mix (≈72% combined) versus
+≈24% elsewhere, the physical signature of a contaminated etch chamber.*
 
 ### 3. SPC control charts — a sustained shift a point-check cannot catch
 
@@ -270,6 +275,11 @@ Each wafer's yield is joined through `process_runs` to every chamber it passed
 through, grouped by chamber, and ranked worst-first. **The query is not told about
 `ETCH-02/C`; it rediscovers it.**
 
+   ![Commonality analysis result](images/commonality_result.png)
+   *ETCH-02/C surfaces at rank 1 — the worst-yielding chamber — with its
+   sibling chambers A and B sitting at baseline. The query is never told where
+   to look.*
+
 - **`ETCH-02/C` ranks #1 (worst), alone.** Its wafers average **84.08 %** yield.
   The next-worst chamber is already up at 88.56 % — a 4.5-point gap from #1 to
   #2 — and every other chamber, *including ETCH-02's own siblings A (90.05 %) and
@@ -295,6 +305,11 @@ The whole investigation then collapses into one summary grid:
 
 One root cause, every arrow pointing the same way — more defects, of the
 contamination type, depressing yield.
+
+![Fingerprint summary: one root cause, three consequences](images/fingerprint_summary.png)
+*The whole investigation in one grid: `ETCH-02/C` wafers carry more defects,
+lower yield, and a far higher particle/flake share than all other wafers —
+one root cause, every metric pointing the same way.*
 
 ### The through-line
 
