@@ -4,7 +4,7 @@
 metrology, and final-test data — built so that analytical queries can trace a
 yield loss back to the specific tool or chamber that caused it.**
 
-> **Project status: complete — all three stages done.**
+> **Project status: complete — all stages done.**
 > The 12-table schema is built and fully constrained (Stage 1); the database is
 > populated with a large, internally-consistent synthetic dataset carrying a
 > deliberately planted, subtle equipment excursion (Stage 2); and a five-part
@@ -333,6 +333,33 @@ simpler analyses narrow the field; commonality analysis — enabled by the
 
 ---
 
+## Interactive dashboard (Stage 4 — Power BI)
+
+The Stage 3 analysis layer, made explorable. A single-page Power BI dashboard
+connects live to the `FabYield` database and surfaces all five analyses as
+linked visuals — the query results a yield engineer would actually watch.
+
+![Fab Yield & Defect Metrology analytics dashboard](images/powerbi_dashboard.png)
+
+- **Avg Yield by Chamber** (headline) — the commonality result as a bar chart,
+  with `ETCH-02 Ch C` highlighted in red, dropping ~6 points below every peer
+  while its own sibling chambers sit at baseline.
+- **Defect Pareto** — defect types ranked, with a cumulative-% line closing at
+  100%.
+- **CD Control Chart (±3σ)** — CD stays *within* the control limits, the honest
+  visual of a shift too subtle for a point-check to catch.
+- **Defect Count vs Yield** — one point per wafer, trend line sloping downward.
+- **Yield by Product** — deliberately flat, the "ruled out, not the cause"
+  control.
+
+A notable modeling detail: because `process_runs` reaches `tools` two ways
+(directly, and via `chambers`), the chamber-yield measure uses an explicit
+`USERELATIONSHIP` + `TREATAS` DAX pattern to walk the intended path and avoid the
+ambiguous-relationship error — the BI-side echo of the same "the chamber is the
+root cause" modeling decision made in the schema.
+
+---
+
 ## Honest engineering notes
 
 Kept here rather than scrubbed out, because how a problem was diagnosed is itself
@@ -479,7 +506,10 @@ system catalog views.
       analysis, defect Pareto with defect-mix contrast, SPC control charts,
       commonality analysis that re-identifies `ETCH-02/C` from the data alone, and
       defect-to-yield correlation closing the loop
-
+- [x] **Stage 4** — Interactive Power BI dashboard: five linked visuals over the
+      live database (commonality, Pareto, SPC, defect-yield correlation, yield
+      overview), with a custom DAX measure to resolve the ambiguous chamber→tool
+      path
 
 ---
 
